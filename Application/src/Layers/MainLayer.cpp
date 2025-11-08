@@ -2,11 +2,11 @@
 
 #include "Renderer/Renderer.h"
 
-#include <iostream>
 #include <queue>
 
-MainLayer::MainLayer()
+void MainLayer::RebuildGridAndOpenSet()
 {
+	grid_.clear();
 	grid_.resize(GRID_ROWS_, std::vector<Node>(GRID_COLUMNS_));
 	for (int row = 0; row < GRID_ROWS_; ++row)
 	{
@@ -18,98 +18,172 @@ MainLayer::MainLayer()
 		}
 	}
 
-	for (int i = 0; i < GRID_ROWS_ * GRID_COLUMNS_ * 0.2f; ++i)
+	// grid_[START_ROW_ - 2][START_COLUMN_ + 3].Type = ETileType::Wall;
+	// grid_[START_ROW_ - 1][START_COLUMN_ + 3].Type = ETileType::Wall;
+	// grid_[START_ROW_][START_COLUMN_ + 3].Type = ETileType::Wall;
+	// grid_[START_ROW_ + 1][START_COLUMN_ + 3].Type = ETileType::Wall;
+	// grid_[START_ROW_ + 2][START_COLUMN_ + 3].Type = ETileType::Wall;
+	for (int i = 0; i < GRID_ROWS_ * GRID_COLUMNS_ * 0.3f; ++i)
 	{
-		int row = rand() % GRID_ROWS_;
-		int col = rand() % GRID_COLUMNS_;
-		grid_[row][col].Type = ETileType::Wall;
+		int randRow = rand() % GRID_ROWS_;
+		int randCol = rand() % GRID_COLUMNS_;
+		grid_[randRow][randCol].Type = ETileType::Wall;
 	}
 
-	grid_[0][0].Type = ETileType::Path;
-	grid_[GOAL_.x][GOAL_.y].Type = ETileType::Path;
+	grid_[START_ROW_][START_COLUMN_].Type = ETileType::Path;
+	grid_[GOAL_ROW_][GOAL_COLUMN_].Type = ETileType::Path;
 
-	std::vector<std::vector<int>> costMap(GRID_ROWS_, std::vector<int>(GRID_COLUMNS_, std::numeric_limits<int>::max()));
-	std::vector<std::vector<bool>> closedSet(GRID_ROWS_, std::vector<bool>(GRID_COLUMNS_, false));
-	std::vector<std::vector<Node*>> cameFrom(GRID_ROWS_, std::vector<Node*>(GRID_COLUMNS_, nullptr));
-	costMap[0][0] = 0;
-	auto comp = [&costMap](const glm::ivec2& a, const glm::ivec2& b) { return costMap[a.x][a.y] > costMap[b.x][b.y]; };
-	std::priority_queue<glm::ivec2, std::vector<glm::ivec2>, decltype(comp)> openSet(comp);
-
-	openSet.push({0, 0});
-	while (!openSet.empty())
+	Node& start = grid_[START_ROW_][START_COLUMN_];
+	start.GCost = 0;
+	start.HCost = HeuristicCost(START_ROW_, START_COLUMN_, GOAL_ROW_, GOAL_COLUMN_, heuristicMethod_);
+	openSet_ = std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)>(comp_);
+	openSet_.push(&start);
+}
+void MainLayer::StepPathfinding()
+{
+	if (!openSet_.empty() && !bPathFound_)
 	{
-		glm::ivec2 pair = openSet.top();
-		openSet.pop();
-		int currentRow = pair.x;
-		int currentCol = pair.y;
-		if (closedSet[currentRow][currentCol])
+		Node* current = openSet_.top();
+		openSet_.pop();
+		if (current->bClosed)
 		{
-			continue;
+			return;
 		}
-		closedSet[currentRow][currentCol] = true;
-		if (currentRow == GOAL_.x && currentCol == GOAL_.y)
+		current->bClosed = true;
+		if (current->Row == GOAL_ROW_ && current->Column == GOAL_COLUMN_)
 		{
-			break;
+			bPathFound_ = true;
+			return;
 		}
 
-		std::vector<Node*> neighbors = GetNeighbors(currentRow, currentCol);
+		const bool bAllowDiagonals = heuristicMethod_ != EHeuristicMethod::Manhattan;
+		std::vector<Node*> neighbors = GetNeighbors(current->Row, current->Column, bAllowDiagonals);
 		for (Node* neighbor : neighbors)
 		{
-			if (!neighbor->IsWalkable())
+			if (!neighbor->IsWalkable() || neighbor->bClosed)
 			{
 				continue;
 			}
 			int walkCost = GetTileCost(neighbor->Type);
-			int newCost = costMap[currentRow][currentCol] + walkCost;
-			if (newCost < costMap[neighbor->Row][neighbor->Column])
+			float newCost = current->GCost + walkCost;
+			if (newCost < neighbor->GCost)
 			{
-				costMap[neighbor->Row][neighbor->Column] = newCost;
-				cameFrom[neighbor->Row][neighbor->Column] = &grid_[currentRow][currentCol];
-				openSet.push({neighbor->Row, neighbor->Column});
+				neighbor->GCost = newCost;
+				neighbor->HCost
+					= HeuristicCost(neighbor->Row, neighbor->Column, GOAL_ROW_, GOAL_COLUMN_, heuristicMethod_);
+				neighbor->Parent = current;
+				openSet_.push(neighbor);
 			}
 		}
 	}
+	//
+	// for (int row = 0; row < GRID_ROWS_; ++row)
+	// {
+	// 	for (int col = 0; col < GRID_COLUMNS_; ++col)
+	// 	{
+	// 		const Node& node = grid_[row][col];
+	//
+	// 		if (node.GCost != std::numeric_limits<float>::max())
+	// 		{
+	// 			std::cout << node.GCost << "\t";
+	// 		}
+	// 		else
+	// 		{
+	// 			std::cout << "X\t";
+	// 		}
+	// 	}
+	// 	std::cout << std::endl;
+	// }
+}
+MainLayer::MainLayer()
+{
+	RebuildGridAndOpenSet();
+}
 
-	int currentRow = GOAL_.x;
-	int currentCol = GOAL_.y;
-	while (cameFrom[currentRow][currentCol] != nullptr)
+void MainLayer::DrawGrid(Renderer& renderer)
+{
+	constexpr glm::vec4 GRID_COLOR = glm::vec4(0.5f, 0.5f, 0.5f, 0.3f);
+	for (int col = 0; col <= GRID_COLUMNS_; ++col)
 	{
-		Node* fromNode = cameFrom[currentRow][currentCol];
-		glm::ivec2 fromPos = {fromNode->Row, fromNode->Column};
-		glm::ivec2 toPos = {currentRow, currentCol};
-		cameFromLines_.push_back({fromPos, toPos});
-		currentRow = fromNode->Row;
-		currentCol = fromNode->Column;
+		const glm::vec2 start = glm::vec2(-GRID_HALF_WIDTH_, -GRID_HALF_HEIGHT_ + col * CELL_SIZE_);
+		const glm::vec2 end = glm::vec2(GRID_HALF_WIDTH_, -GRID_HALF_HEIGHT_ + col * CELL_SIZE_);
+		renderer.DrawLine(start, end, GRID_COLOR, 1.0f);
+	}
+	for (int row = 0; row <= GRID_ROWS_; ++row)
+	{
+		const glm::vec2 start = glm::vec2(-GRID_HALF_WIDTH_ + row * CELL_SIZE_, -GRID_HALF_HEIGHT_);
+		const glm::vec2 end = glm::vec2(-GRID_HALF_WIDTH_ + row * CELL_SIZE_, GRID_HALF_HEIGHT_);
+		renderer.DrawLine(start, end, GRID_COLOR, 1.0f);
 	}
 
 	for (int row = 0; row < GRID_ROWS_; ++row)
 	{
 		for (int col = 0; col < GRID_COLUMNS_; ++col)
 		{
-			if (costMap[row][col] == std::numeric_limits<int>::max())
-			{
-				std::cout << "X ";
-				continue;
-			}
-			std::cout << costMap[row][col] << " ";
+			glm::vec2 center = IndexToCenterPosition(row, col);
+			glm::vec2 leftTop = glm::vec2(center.x - HALF_CELL_SIZE_, center.y + HALF_CELL_SIZE_);
+			glm::vec2 rightBottom = leftTop + glm::vec2(CELL_SIZE_, -CELL_SIZE_);
+			renderer.DrawLine(leftTop, rightBottom, GRID_COLOR, 1.0f);
+			glm::vec2 rightTop = glm::vec2(center.x + HALF_CELL_SIZE_, center.y + HALF_CELL_SIZE_);
+			glm::vec2 leftBottom = rightTop + glm::vec2(-CELL_SIZE_, -CELL_SIZE_);
+			renderer.DrawLine(rightTop, leftBottom, GRID_COLOR, 1.0f);
 		}
-		std::cout << std::endl;
 	}
 }
-void MainLayer::OnUpdate(float deltaTime) {}
-void MainLayer::DrawGrid(Renderer& renderer)
+void MainLayer::DrawPath(Renderer& renderer)
 {
-	for (int col = 0; col <= GRID_COLUMNS_; ++col)
+	static constexpr glm::vec4 PATH_COLOR = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	Node* current = openSet_.empty() ? &grid_[GOAL_ROW_][GOAL_COLUMN_] : openSet_.top();
+	int currentRow = current->Row;
+	int currentCol = current->Column;
+	while (Node* parent = grid_[currentRow][currentCol].Parent)
 	{
-		const glm::vec2 start = glm::vec2(-GRID_HALF_WIDTH_, -GRID_HALF_HEIGHT_ + col * CELL_SIZE_);
-		const glm::vec2 end = glm::vec2(GRID_HALF_WIDTH_, -GRID_HALF_HEIGHT_ + col * CELL_SIZE_);
-		renderer.DrawLine(start, end, glm::vec4(0.5f, 0.5f, 0.5f, 0.5f), 1.0f);
+		renderer.DrawLine(IndexToCenterPosition(currentRow, currentCol),
+						  IndexToCenterPosition(parent->Row, parent->Column), PATH_COLOR, 3.0f);
+		currentRow = parent->Row;
+		currentCol = parent->Column;
 	}
-	for (int row = 0; row <= GRID_ROWS_; ++row)
+}
+void MainLayer::DrawClosed(Renderer& renderer)
+{
+	constexpr glm::vec4 CLOSED_COLOR = glm::vec4(0.27f, 0.68f, 0.73f, 0.3f);
+	for (int row = 0; row < GRID_ROWS_; ++row)
 	{
-		const glm::vec2 start = glm::vec2(-GRID_HALF_WIDTH_ + row * CELL_SIZE_, -GRID_HALF_HEIGHT_);
-		const glm::vec2 end = glm::vec2(-GRID_HALF_WIDTH_ + row * CELL_SIZE_, GRID_HALF_HEIGHT_);
-		renderer.DrawLine(start, end, glm::vec4(0.5f, 0.5f, 0.5f, 0.5f), 1.0f);
+		for (int col = 0; col < GRID_COLUMNS_; ++col)
+		{
+			if (!grid_[row][col].bClosed)
+			{
+				continue;
+			}
+
+			glm::ivec2 position = IndexToCenterPosition(row, col);
+			renderer.DrawRectangle(position, 0.0f, glm::vec2(CELL_SIZE_, CELL_SIZE_), CLOSED_COLOR, false);
+		}
+	}
+}
+
+void MainLayer::DrawOpen(Renderer& renderer)
+{
+	constexpr glm::vec4 OPEN_COLOR = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
+	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> tempOpenSet = openSet_;
+	while (!tempOpenSet.empty())
+	{
+		Node* node = tempOpenSet.top();
+		tempOpenSet.pop();
+
+		glm::ivec2 position = IndexToCenterPosition(node->Row, node->Column);
+		renderer.DrawRectangle(position, 0.0f, glm::vec2(CELL_SIZE_, CELL_SIZE_), OPEN_COLOR, false);
+	}
+}
+
+void MainLayer::OnUpdate(float deltaTime)
+{
+	static float interval = 0.01f;
+	accumulatedTime_ += deltaTime;
+	if (accumulatedTime_ >= interval)
+	{
+		StepPathfinding();
+		accumulatedTime_ = 0.0f;
 	}
 }
 void MainLayer::OnRender(Renderer& renderer)
@@ -122,45 +196,56 @@ void MainLayer::OnRender(Renderer& renderer)
 		for (int col = 0; col < GRID_COLUMNS_; ++col)
 		{
 			const Node& node = grid_[row][col];
-			glm::ivec2 position = IndexToCenterPosition({row, col});
+			glm::ivec2 position = IndexToCenterPosition(row, col);
 			renderer.DrawRectangle(position, 0.0f, glm::vec2(CELL_SIZE_, CELL_SIZE_), GetTileColor(node.Type), false);
 		}
 	}
 
-	for (const std::pair<glm::ivec2, glm::ivec2>& edge : cameFromLines_)
-	{
-		const glm::ivec2 from = edge.first;
-		const glm::ivec2 to = edge.second;
-		renderer.DrawLine(IndexToCenterPosition(from), IndexToCenterPosition(to), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
-						  3.0f);
-	}
+	renderer.DrawRectangle(IndexToCenterPosition(START_ROW_, START_COLUMN_), 0.0f, glm::vec2(CELL_SIZE_, CELL_SIZE_),
+						   glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), true);
+	renderer.DrawRectangle(IndexToCenterPosition(GOAL_ROW_, GOAL_COLUMN_), 0.0f, glm::vec2(CELL_SIZE_, CELL_SIZE_),
+						   glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), true);
+
+	DrawClosed(renderer);
+	DrawPath(renderer);
+	DrawOpen(renderer);
 
 	renderer.EndScene();
 }
-std::vector<Node*> MainLayer::GetNeighbors(int row, int col)
+std::vector<Node*> MainLayer::GetNeighbors(int row, int col, bool allowDiagonals)
 {
 	std::vector<Node*> neighbors;
-	constexpr glm::ivec2 directions[] = {
-		{-1, 0}, // Up
-		{1, 0},	 // Down
-		{0, -1}, // Left
-		{0, 1}	 // Right
+	constexpr static int directions[8][2] = {
+		{-1, 0},  // Up
+		{1, 0},	  // Down
+		{0, -1},  // Left
+		{0, 1},	  // Right
+		{-1, -1}, // Up-Left
+		{-1, 1},  // Up-Right
+		{1, -1},  // Down-Left
+		{1, 1}	  // Down-Right
 	};
-	for (const glm::ivec2& dir : directions)
+
+	int numDirections = allowDiagonals ? 8 : 4;
+
+	for (int i = 0; i < numDirections; ++i)
 	{
-		int newRow = row + dir.x;
-		int newCol = col + dir.y;
+		int newRow = row + directions[i][0];
+		int newCol = col + directions[i][1];
+
 		if (newRow >= 0 && newRow < GRID_ROWS_ && newCol >= 0 && newCol < GRID_COLUMNS_)
 		{
 			neighbors.push_back(&grid_[newRow][newCol]);
 		}
 	}
+
 	return neighbors;
 }
-glm::ivec2 MainLayer::IndexToCenterPosition(const glm::ivec2& index)
+
+glm::vec2 MainLayer::IndexToCenterPosition(int row, int col)
 {
-	return glm::ivec2(-GRID_HALF_WIDTH_ + index.y * CELL_SIZE_ + HALF_CELL_SIZE_,
-					  GRID_HALF_HEIGHT_ - index.x * CELL_SIZE_ - HALF_CELL_SIZE_);
+	return glm::vec2(-GRID_HALF_WIDTH_ + col * CELL_SIZE_ + HALF_CELL_SIZE_,
+					 GRID_HALF_HEIGHT_ - row * CELL_SIZE_ - HALF_CELL_SIZE_);
 }
 
 glm::vec4 MainLayer::GetTileColor(ETileType type)
@@ -181,21 +266,40 @@ glm::vec4 MainLayer::GetTileColor(ETileType type)
 		return glm::vec4(1.0f, 1.0f, 1.0f, 0.3f);
 	}
 }
-int MainLayer::GetTileCost(ETileType type)
+float MainLayer::GetTileCost(ETileType type)
 {
 	switch (type)
 	{
 	case ETileType::Path:
-		return 1;
+		return 1.0f;
 	case ETileType::Wall:
-		return std::numeric_limits<int>::max();
+		return std::numeric_limits<float>::max();
 	case ETileType::Water:
-		return 5;
+		return 5.0f;
 	case ETileType::Sand:
-		return 3;
+		return 3.0f;
 	case ETileType::Forest:
-		return 4;
+		return 4.0f;
 	default:
-		return 1;
+		return 1.0f;
+	}
+}
+float MainLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod method)
+{
+	const int deltaRow = abs(rowA - rowB);
+	const int deltaCol = abs(colA - colB);
+	switch (method)
+	{
+	case EHeuristicMethod::None:
+		return 0.0f;
+	case EHeuristicMethod::Manhattan:
+		return static_cast<float>(deltaRow + deltaCol);
+	case EHeuristicMethod::Euclidean:
+		return sqrtf(static_cast<float>(deltaRow * deltaRow + deltaCol * deltaCol));
+	case EHeuristicMethod::Octile:
+		return static_cast<float>(std::min(deltaRow, deltaCol)) * 1.4142f
+			   + std::abs(static_cast<float>(deltaRow - deltaCol));
+	default:
+		return 0.0f;
 	}
 }
