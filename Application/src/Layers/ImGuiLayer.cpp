@@ -1,16 +1,9 @@
 #include "ImGuiLayer.h"
-
-
-#include "imgui.h"
+#include "Core/IniParser.h"
+#include "GLFW/glfw3.h"
+#include "Renderer/TextureManager.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-
-
-#include "GLFW/glfw3.h"
-#include <Windows.h>
-#include <filesystem>
-
-#include "Core/IniParser.h"
 
 void ImGuiLayer::OnInit()
 {
@@ -23,9 +16,20 @@ void ImGuiLayer::OnInit()
 	std::filesystem::path configPath = CONFIG_PATH;
 	configPath /= "config.ini";
 	IniFile configFile = ParseIniFile(configPath);
+
+	TextureManager& textureManager = TextureManager::GetInstance();
+	std::filesystem::path assetsPath = APP_ASSET_PATH;
+	assetsPath /= "textures/Sprout Lands - Sprites - Basic pack/Objects/Basic Furniture.png";
+	std::shared_ptr<ImageTexture> testTexture = textureManager.LoadTextureFromFile(assetsPath);
+}
+void ImGuiLayer::OnDestroy()
+{
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
 }
 
-void ImGuiLayer::OnUpdate(float deltaTime)
+void ImGuiLayer::OnRender(Renderer& renderer)
 {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
@@ -37,18 +41,47 @@ void ImGuiLayer::OnUpdate(float deltaTime)
 	ImGui::Text("FrameRate: %d (%.0f ms)", static_cast<int>(ImGui::GetIO().Framerate),
 				1000.0f / ImGui::GetIO().Framerate);
 
-	ImGui::End();
-}
+	if (ImGui::BeginCombo("Mode", bIsPlayMode_ ? "Play Mode" : "Edit Mode"))
+	{
+		if (ImGui::Selectable("Play Mode"))
+		{
+			SetIsPlayMode(true);
+		}
+		if (ImGui::Selectable("Edit Mode"))
+		{
+			SetIsPlayMode(false);
+		}
 
-void ImGuiLayer::OnRender(Renderer& renderer)
-{
+		ImGui::EndCombo();
+	}
+
+	TextureManager& textureManager = TextureManager::GetInstance();
+
+	std::filesystem::path assetsPath = APP_ASSET_PATH;
+	assetsPath /= "textures/Sprout Lands - Sprites - Basic pack/Objects/Basic Furniture.png";
+	std::shared_ptr<ImageTexture> testTexture = textureManager.LoadTextureFromFile(assetsPath);
+	if (testTexture)
+	{
+		ImGui::Begin("Texture Test");
+		ImGui::Text("Test Texture:");
+		ImGui::Image(testTexture->GetID(), ImVec2(testTexture->GetWidth(), testTexture->GetHeight()));
+		ImGui::End();
+	}
+
+	ImGui::ShowDemoWindow();
+
+	ImGui::End();
+
 	ImGui::Render();
+
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
-
-void ImGuiLayer::OnDestroy()
+void ImGuiLayer::SetIsPlayMode(bool bIsPlayMode)
 {
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
+	if (bIsPlayMode_ == bIsPlayMode)
+	{
+		return;
+	}
+	bIsPlayMode_ = bIsPlayMode;
+	OnModeChanged.Execute(bIsPlayMode_);
 }

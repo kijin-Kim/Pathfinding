@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/Delegate.h"
 #include "Core/Layers/Layer.h"
 #include "glm/vec2.hpp"
 #include "glm/vec4.hpp"
@@ -37,10 +38,10 @@ struct Node
 	bool IsWalkable() const { return Type != ETileType::Wall; }
 };
 
-class MainLayer : public ILayer
+class PathfindingLayer : public ILayer
 {
 public:
-	MainLayer();
+	PathfindingLayer();
 	void RebuildGridAndOpenSet();
 	void StepPathfinding();
 	void DrawGrid(Renderer& renderer);
@@ -49,6 +50,7 @@ public:
 	void DrawOpen(Renderer& renderer);
 	virtual void OnUpdate(float deltaTime) override;
 	virtual void OnRender(Renderer& renderer) override;
+	virtual bool OnMouseButtonEvent(int button, int action, int mods) override;
 
 	std::vector<Node*> GetNeighbors(int row, int col, bool allowDiagonals);
 
@@ -56,6 +58,8 @@ public:
 	glm::vec4 GetTileColor(ETileType type);
 	float GetTileCost(ETileType type);
 	float HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod method);
+	void SetIsPlayMode(bool bIsPlayMode) { bIsPlayMode_ = bIsPlayMode; }
+
 
 private:
 	std::vector<std::vector<Node>> grid_;
@@ -88,4 +92,5 @@ private:
 	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> openSet_;
 	bool bPathFound_ = false;
 	float accumulatedTime_ = 0.0f;
+	bool bIsPlayMode_ = true;
 };

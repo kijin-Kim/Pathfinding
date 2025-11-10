@@ -1,10 +1,15 @@
-#include "MainLayer.h"
+#include "PathfindingLayer.h"
 
+#include "Core/Application.h"
+#include "GLFW/glfw3.h"
 #include "Renderer/Renderer.h"
+#include "Renderer/TextureManager.h"
+#include "glm/ext/matrix_clip_space.hpp"
 
+#include <iostream>
 #include <queue>
 
-void MainLayer::RebuildGridAndOpenSet()
+void PathfindingLayer::RebuildGridAndOpenSet()
 {
 	grid_.clear();
 	grid_.resize(GRID_ROWS_, std::vector<Node>(GRID_COLUMNS_));
@@ -39,7 +44,7 @@ void MainLayer::RebuildGridAndOpenSet()
 	openSet_ = std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)>(comp_);
 	openSet_.push(&start);
 }
-void MainLayer::StepPathfinding()
+void PathfindingLayer::StepPathfinding()
 {
 	if (!openSet_.empty() && !bPathFound_)
 	{
@@ -95,12 +100,12 @@ void MainLayer::StepPathfinding()
 	// 	std::cout << std::endl;
 	// }
 }
-MainLayer::MainLayer()
+PathfindingLayer::PathfindingLayer()
 {
 	RebuildGridAndOpenSet();
 }
 
-void MainLayer::DrawGrid(Renderer& renderer)
+void PathfindingLayer::DrawGrid(Renderer& renderer)
 {
 	constexpr glm::vec4 GRID_COLOR = glm::vec4(0.5f, 0.5f, 0.5f, 0.3f);
 	for (int col = 0; col <= GRID_COLUMNS_; ++col)
@@ -130,7 +135,7 @@ void MainLayer::DrawGrid(Renderer& renderer)
 		}
 	}
 }
-void MainLayer::DrawPath(Renderer& renderer)
+void PathfindingLayer::DrawPath(Renderer& renderer)
 {
 	static constexpr glm::vec4 PATH_COLOR = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 	Node* current = openSet_.empty() ? &grid_[GOAL_ROW_][GOAL_COLUMN_] : openSet_.top();
@@ -144,7 +149,7 @@ void MainLayer::DrawPath(Renderer& renderer)
 		currentCol = parent->Column;
 	}
 }
-void MainLayer::DrawClosed(Renderer& renderer)
+void PathfindingLayer::DrawClosed(Renderer& renderer)
 {
 	constexpr glm::vec4 CLOSED_COLOR = glm::vec4(0.27f, 0.68f, 0.73f, 0.3f);
 	for (int row = 0; row < GRID_ROWS_; ++row)
@@ -162,7 +167,7 @@ void MainLayer::DrawClosed(Renderer& renderer)
 	}
 }
 
-void MainLayer::DrawOpen(Renderer& renderer)
+void PathfindingLayer::DrawOpen(Renderer& renderer)
 {
 	constexpr glm::vec4 OPEN_COLOR = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
 	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> tempOpenSet = openSet_;
@@ -176,21 +181,20 @@ void MainLayer::DrawOpen(Renderer& renderer)
 	}
 }
 
-void MainLayer::OnUpdate(float deltaTime)
+void PathfindingLayer::OnUpdate(float deltaTime)
 {
 	static float interval = 0.01f;
 	accumulatedTime_ += deltaTime;
 	if (accumulatedTime_ >= interval)
 	{
-		StepPathfinding();
+		// StepPathfinding();
 		accumulatedTime_ = 0.0f;
 	}
 }
-void MainLayer::OnRender(Renderer& renderer)
+void PathfindingLayer::OnRender(Renderer& renderer)
 {
 	renderer.BeginScene();
 	DrawGrid(renderer);
-
 	for (int row = 0; row < GRID_ROWS_; ++row)
 	{
 		for (int col = 0; col < GRID_COLUMNS_; ++col)
@@ -210,9 +214,59 @@ void MainLayer::OnRender(Renderer& renderer)
 	DrawPath(renderer);
 	DrawOpen(renderer);
 
+
+
+
+
+	std::filesystem::path filePath = APP_ASSET_PATH;
+	filePath /= "textures/img.png";
+	renderer.DrawTexturedRectangle(Application::GetInstance().GetWorldCursorPosition(), 0.0f,
+								   TextureManager::GetInstance().LoadTextureFromFile(filePath));
+
+
 	renderer.EndScene();
 }
-std::vector<Node*> MainLayer::GetNeighbors(int row, int col, bool allowDiagonals)
+bool PathfindingLayer::OnMouseButtonEvent(int button, int action, int mods)
+{
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	{
+		double mouseX;
+		double mouseY;
+		glfwGetCursorPos(glfwGetCurrentContext(), &mouseX, &mouseY);
+		const Application::ApplicationSettings& settings = Application::GetInstance().GetSettings();
+		int width = settings.Width;
+		int height = settings.Height;
+		glm::mat4 projection
+			= glm::ortho(-static_cast<float>(width) / 2.0f, static_cast<float>(width) / 2.0f,
+						 -static_cast<float>(height) / 2.0f, static_cast<float>(height) / 2.0f, -1.0f, 1.0f);
+		mouseX = mouseX / width * 2.0f - 1.0f;
+		mouseY = 1.0f - mouseY / height * 2.0f;
+
+		glm::vec4 mousePosNDC = glm::vec4(static_cast<float>(mouseX), static_cast<float>(mouseY), 0.0f, 1.0f);
+		glm::vec4 worldPos = glm::inverse(projection) * mousePosNDC;
+		mouseX = worldPos.x;
+		mouseY = worldPos.y;
+		std::cout << "Mouse Position: (" << mouseX << ", " << mouseY << ")" << std::endl;
+
+		int col = static_cast<int>((mouseX + GRID_HALF_WIDTH_) / CELL_SIZE_);
+		int row = static_cast<int>((GRID_HALF_HEIGHT_ - mouseY) / CELL_SIZE_);
+		if (row >= 0 && row < GRID_ROWS_ && col >= 0 && col < GRID_COLUMNS_)
+		{
+			Node& node = grid_[row][col];
+			if (node.Type == ETileType::Wall)
+			{
+				node.Type = ETileType::Path;
+			}
+			else if (node.Type == ETileType::Path)
+			{
+				node.Type = ETileType::Wall;
+			}
+		}
+	}
+
+	return true;
+}
+std::vector<Node*> PathfindingLayer::GetNeighbors(int row, int col, bool allowDiagonals)
 {
 	std::vector<Node*> neighbors;
 	constexpr static int directions[8][2] = {
@@ -242,13 +296,13 @@ std::vector<Node*> MainLayer::GetNeighbors(int row, int col, bool allowDiagonals
 	return neighbors;
 }
 
-glm::vec2 MainLayer::IndexToCenterPosition(int row, int col)
+glm::vec2 PathfindingLayer::IndexToCenterPosition(int row, int col)
 {
 	return glm::vec2(-GRID_HALF_WIDTH_ + col * CELL_SIZE_ + HALF_CELL_SIZE_,
 					 GRID_HALF_HEIGHT_ - row * CELL_SIZE_ - HALF_CELL_SIZE_);
 }
 
-glm::vec4 MainLayer::GetTileColor(ETileType type)
+glm::vec4 PathfindingLayer::GetTileColor(ETileType type)
 {
 	switch (type)
 	{
@@ -266,7 +320,7 @@ glm::vec4 MainLayer::GetTileColor(ETileType type)
 		return glm::vec4(1.0f, 1.0f, 1.0f, 0.3f);
 	}
 }
-float MainLayer::GetTileCost(ETileType type)
+float PathfindingLayer::GetTileCost(ETileType type)
 {
 	switch (type)
 	{
@@ -284,7 +338,7 @@ float MainLayer::GetTileCost(ETileType type)
 		return 1.0f;
 	}
 }
-float MainLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod method)
+float PathfindingLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod method)
 {
 	const int deltaRow = abs(rowA - rowB);
 	const int deltaCol = abs(colA - colB);
@@ -303,3 +357,5 @@ float MainLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristi
 		return 0.0f;
 	}
 }
+
+

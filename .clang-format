@@ -17,3 +17,4 @@ BreakConstructorInitializers: BeforeComma
 PackConstructorInitializers: Never
 AllowShortFunctionsOnASingleLine: Inline
 NamespaceIndentation: All
+BreakTemplateDeclarations: Yes
