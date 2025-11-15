@@ -1,26 +1,19 @@
 #pragma once
 #include "Core/Delegate.h"
 #include "Core/Layers/Layer.h"
+#include "LayerCommon.h"
+#include "Renderer/ImageTexture.h"
+#include "Renderer/Renderer.h"
+#include "TilemapEditor/MapData.h"
 #include "glm/vec2.hpp"
 #include "glm/vec4.hpp"
 
 #include <queue>
 
-enum class EHeuristicMethod
-{
-	None,
-	Manhattan,
-	Euclidean,
-	Octile,
-};
-
 enum class ETileType
 {
 	Path,
-	Wall,
-	Water,
-	Sand,
-	Forest
+	Wall
 };
 
 struct Node
@@ -42,6 +35,7 @@ class PathfindingLayer : public ILayer
 {
 public:
 	PathfindingLayer();
+	virtual void OnInit() override;
 	void RebuildGridAndOpenSet();
 	void StepPathfinding();
 	void DrawGrid(Renderer& renderer);
@@ -57,29 +51,19 @@ public:
 	glm::vec2 IndexToCenterPosition(int row, int col);
 	glm::vec4 GetTileColor(ETileType type);
 	float GetTileCost(ETileType type);
-	float HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod method);
-	void SetIsPlayMode(bool bIsPlayMode) { bIsPlayMode_ = bIsPlayMode; }
+	float HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod::Type method);
 
+	void OnViewportCursorPositionChanged(float x, float y);
+	void OnMapDataRefChanged(const std::weak_ptr<MapData>& mapDataWeak);
+	void OnTileSelected(const std::shared_ptr<ImageTexture>& imageTexture,
+						const Renderer::TextureRegion& textureRegion);
+	void OnStartButtonClicked();
+	void OnStopButtonClicked();
+	void OnResetButtonClicked();
+	void OnStepButtonClicked();
 
 private:
 	std::vector<std::vector<Node>> grid_;
-	constexpr static int GRID_ROWS_ = 27;
-	constexpr static int GRID_COLUMNS_ = 27;
-	constexpr static float CELL_SIZE_ = 30.0f;
-	constexpr static float HALF_CELL_SIZE_ = CELL_SIZE_ * 0.5f;
-	constexpr static int GRID_HALF_WIDTH_ = GRID_ROWS_ * CELL_SIZE_ * 0.5f;
-	constexpr static int GRID_HALF_HEIGHT_ = GRID_COLUMNS_ * CELL_SIZE_ * 0.5f;
-
-	// constexpr static int START_ROW_ = GRID_ROWS_ / 2;
-	// constexpr static int START_COLUMN_ = GRID_COLUMNS_ / 2;
-	// constexpr static int GOAL_ROW_ = GRID_ROWS_ / 2;
-	// constexpr static int GOAL_COLUMN_ = GRID_COLUMNS_ - 4;
-
-	constexpr static int START_ROW_ = 0;
-	constexpr static int START_COLUMN_ = 0;
-	constexpr static int GOAL_ROW_= GRID_ROWS_ - 1;
-	constexpr static int GOAL_COLUMN_ = GRID_COLUMNS_ - 1;
-	EHeuristicMethod heuristicMethod_ = EHeuristicMethod::None;
 
 	decltype([](Node* a, Node* b)
 	{
@@ -92,5 +76,17 @@ private:
 	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> openSet_;
 	bool bPathFound_ = false;
 	float accumulatedTime_ = 0.0f;
-	bool bIsPlayMode_ = true;
+
+
+	float viewportCursorX_ = 0.0f;
+	float viewportCursorY_ = 0.0f;
+
+	glm::vec2 cursorPos_;
+
+	std::weak_ptr<MapData> mapDataWeak_;
+
+	std::shared_ptr<ImageTexture> selectedTileSetImage_;
+	Renderer::TextureRegion selectedTileRegion_;
+
+	bool bIsPaused_ = true;
 };

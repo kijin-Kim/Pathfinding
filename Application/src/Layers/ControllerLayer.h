@@ -22,16 +22,68 @@ public:
 		std::shared_ptr<PathfindingLayer> pathfindingLayer = pathfindingLayer_.lock();
 		if (imGuiLayer && pathfindingLayer)
 		{
-			imGuiLayer->OnModeChanged.Bind(
-				[this](bool bIsPlayMode)
+			imGuiLayer->OnViewportCursorPositionChanged.Bind(
+				[this](float x, float y)
 				{
-					std::cout << "Mode changed to: " << (bIsPlayMode ? "Play Mode" : "Edit Mode") << std::endl;
-					std::shared_ptr<PathfindingLayer> pathfindingLayer = pathfindingLayer_.lock();
-					if (pathfindingLayer)
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
 					{
-						pathfindingLayer->SetIsPlayMode(bIsPlayMode);
+						pfLayer->OnViewportCursorPositionChanged(x, y);
 					}
-
+				});
+			imGuiLayer->OnMapRefChanged.Bind(
+				[this](const std::weak_ptr<MapData>& mapDataWeak)
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnMapDataRefChanged(mapDataWeak);
+					}
+				});
+			imGuiLayer->OnTileSelected.Bind(
+				[this](const std::shared_ptr<ImageTexture> imageTexture, const Renderer::TextureRegion& textureRegion)
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnTileSelected(imageTexture, textureRegion);
+					}
+				});
+			imGuiLayer->OnStartButtonClicked.Bind(
+				[this]()
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnStartButtonClicked();
+					}
+				});
+			imGuiLayer->OnStopButtonClicked.Bind(
+				[this]()
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnStopButtonClicked();
+					}
+				});
+			imGuiLayer->OnResetButtonClicked.Bind(
+				[this]()
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnResetButtonClicked();
+					}
+				});
+			imGuiLayer->OnStepButtonClicked.Bind(
+				[this]()
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnStepButtonClicked();
+					}
 				});
 		}
 	}
