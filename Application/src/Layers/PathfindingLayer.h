@@ -2,32 +2,12 @@
 #include "Core/Layers/Layer.h"
 #include "LayerCommon.h"
 #include "MapData.h"
+#include "Pathfinding/Node.h"
 #include "Renderer/Renderer.h"
 #include "glm/vec2.hpp"
 #include "glm/vec4.hpp"
 
 #include <queue>
-
-enum class ETileType
-{
-	Path,
-	Wall
-};
-
-struct Node
-{
-	int Row = 0;
-	int Column = 0;
-	ETileType Type = ETileType::Path;
-
-	float GCost = std::numeric_limits<float>::max();
-	float HCost = 0.0f;
-	bool bClosed = false;
-	Node* Parent = nullptr;
-
-	float FCost() const { return GCost + HCost; }
-	bool IsWalkable() const { return Type != ETileType::Wall; }
-};
 
 class PathfindingLayer : public ILayer
 {
