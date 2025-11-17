@@ -9,10 +9,6 @@
 #include <iostream>
 #include <queue>
 
-PathfindingLayer::PathfindingLayer()
-{
-	RebuildGridAndOpenSet();
-}
 void PathfindingLayer::OnInit()
 {
 
@@ -222,7 +218,13 @@ void PathfindingLayer::DrawOpen(Renderer& renderer)
 
 void PathfindingLayer::OnUpdate(float deltaTime)
 {
-	static float interval = 0.01f;
+	constexpr float baseInterval = 0.01f;
+	float interval = baseInterval;
+	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
+	if (mapData)
+	{
+		interval = baseInterval / mapData->SimulationSpeed;
+	}
 	accumulatedTime_ += deltaTime;
 	if (accumulatedTime_ >= interval && !bIsPaused_)
 	{
@@ -265,68 +267,9 @@ void PathfindingLayer::OnRender(Renderer& renderer)
 	DrawPath(renderer);
 	DrawOpen(renderer);
 
-	double mouseX = viewportCursorX_;
-	double mouseY = viewportCursorY_;
-
-	glm::mat4 projection = renderer.GetProjectionMatrix();
-	mouseX = mouseX / framebuffer->GetWidth() * 2.0f - 1.0f;
-	mouseY = 1.0f - mouseY / framebuffer->GetHeight() * 2.0f;
-
-	glm::vec4 mousePosNDC = glm::vec4(static_cast<float>(mouseX), static_cast<float>(mouseY), 0.0f, 1.0f);
-	glm::vec4 worldPos = glm::inverse(projection) * mousePosNDC;
-
-	const float gridHalfWidth = (mapData->Columns * mapData->CellSize) / 2.0f;
-	const float gridHalfHeight = (mapData->Rows * mapData->CellSize) / 2.0f;
-
-	cursorPos_ = glm::vec2(worldPos.x, worldPos.y);
-	int col = static_cast<int>((cursorPos_.x + gridHalfWidth) / mapData->CellSize);
-	int row = static_cast<int>((gridHalfHeight - cursorPos_.y) / mapData->CellSize);
-	if (col >= 0 && col < mapData->Columns && row >= 0 && row < mapData->Rows)
-	{
-
-		if (selectedTileSetImage_)
-		{
-			renderer.DrawTexturedRectangle(IndexToCenterPosition(row, col), 0.0f,
-										   glm::vec2(mapData->CellSize, mapData->CellSize), selectedTileSetImage_,
-										   selectedTileRegion_);
-		}
-	}
-
 	renderer.EndScene();
 }
-bool PathfindingLayer::OnMouseButtonEvent(int button, int action, int mods)
-{
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return false;
-	}
 
-	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
-	{
-		ResourceManager<Framebuffer>& framebufferManager = ResourceManager<Framebuffer>::GetInstance();
-		std::shared_ptr<Framebuffer> framebuffer = framebufferManager.Get("Viewport");
-
-		const float gridHalfWidth = (mapData->Columns * mapData->CellSize) / 2.0f;
-		const float gridHalfHeight = (mapData->Rows * mapData->CellSize) / 2.0f;
-		int col = static_cast<int>((cursorPos_.x + gridHalfWidth) / mapData->CellSize);
-		int row = static_cast<int>((gridHalfHeight - cursorPos_.y) / mapData->CellSize);
-		if (row >= 0 && row < mapData->Rows && col >= 0 && col < mapData->Columns)
-		{
-			Node& node = grid_[row][col];
-			if (node.Type == ETileType::Wall)
-			{
-				node.Type = ETileType::Path;
-			}
-			else if (node.Type == ETileType::Path)
-			{
-				node.Type = ETileType::Wall;
-			}
-		}
-	}
-
-	return true;
-}
 std::vector<Node*> PathfindingLayer::GetNeighbors(int row, int col, bool allowDiagonals)
 {
 	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
@@ -445,34 +388,22 @@ float PathfindingLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EH
 		return 0.0f;
 	}
 }
-void PathfindingLayer::OnViewportCursorPositionChanged(float x, float y)
+void PathfindingLayer::OnMapRefChanged(const std::weak_ptr<MapData>& weak)
 {
-	viewportCursorX_ = x;
-	viewportCursorY_ = y;
-	//	std::cout << "Viewport Cursor Position: (" << x << ", " << y << ")" << std::endl;
-}
-void PathfindingLayer::OnMapDataRefChanged(const std::weak_ptr<MapData>& mapDataWeak)
-{
-	mapDataWeak_ = mapDataWeak;
+	mapDataWeak_ = weak;
 	RebuildGridAndOpenSet();
 }
-void PathfindingLayer::OnTileSelected(const std::shared_ptr<ImageTexture>& imageTexture,
-									  const Renderer::TextureRegion& textureRegion)
-{
-	selectedTileSetImage_ = imageTexture;
-	selectedTileRegion_ = textureRegion;
-}
-void PathfindingLayer::OnStartButtonClicked()
+
+void PathfindingLayer::OnStartEvent()
 {
 	bIsPaused_ = false;
 }
-void PathfindingLayer::OnStopButtonClicked()
+void PathfindingLayer::OnPauseEvent()
 {
 	bIsPaused_ = true;
 }
-void PathfindingLayer::OnResetButtonClicked()
+void PathfindingLayer::OnResetEvent()
 {
-	bIsPaused_ = true;
 	bPathFound_ = false;
 
 	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
@@ -500,7 +431,11 @@ void PathfindingLayer::OnResetButtonClicked()
 	openSet_ = std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)>(comp_);
 	openSet_.push(&start);
 }
-void PathfindingLayer::OnStepButtonClicked()
+void PathfindingLayer::OnStepEvent()
 {
 	StepPathfinding();
+}
+void PathfindingLayer::OnRebuildEvent()
+{
+	RebuildGridAndOpenSet();
 }

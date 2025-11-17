@@ -3,7 +3,6 @@
 #include "ImGuiLayer.h"
 #include "PathfindingLayer.h"
 
-#include <iostream>
 #include <memory>
 
 class ControllerLayer : public ILayer
@@ -22,69 +21,56 @@ public:
 		std::shared_ptr<PathfindingLayer> pathfindingLayer = pathfindingLayer_.lock();
 		if (imGuiLayer && pathfindingLayer)
 		{
-			imGuiLayer->OnViewportCursorPositionChanged.Bind(
-				[this](float x, float y)
-				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
-					{
-						pfLayer->OnViewportCursorPositionChanged(x, y);
-					}
-				});
-			imGuiLayer->OnMapRefChanged.Bind(
-				[this](const std::weak_ptr<MapData>& mapDataWeak)
-				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
-					{
-						pfLayer->OnMapDataRefChanged(mapDataWeak);
-					}
-				});
-			imGuiLayer->OnTileSelected.Bind(
-				[this](const std::shared_ptr<ImageTexture> imageTexture, const Renderer::TextureRegion& textureRegion)
-				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
-					{
-						pfLayer->OnTileSelected(imageTexture, textureRegion);
-					}
-				});
-			imGuiLayer->OnStartButtonClicked.Bind(
+			imGuiLayer->OnMapRefChanged.Bind([pathfindingLayer](const std::weak_ptr<MapData>& mapDataWeak)
+											 { pathfindingLayer->OnMapRefChanged(mapDataWeak); });
+			pathfindingLayer->OnMapRefChanged(imGuiLayer->GetCurrentMap());
+
+			imGuiLayer->OnStartEvent.Bind(
 				[this]()
 				{
 					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
 					if (pfLayer)
 					{
-						pfLayer->OnStartButtonClicked();
+						pfLayer->OnStartEvent();
 					}
 				});
-			imGuiLayer->OnStopButtonClicked.Bind(
+			imGuiLayer->OnPauseEvent.Bind(
 				[this]()
 				{
 					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
 					if (pfLayer)
 					{
-						pfLayer->OnStopButtonClicked();
+						pfLayer->OnPauseEvent();
 					}
 				});
-			imGuiLayer->OnResetButtonClicked.Bind(
+			imGuiLayer->OnResetEvent.Bind(
 				[this]()
 				{
 					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
 					if (pfLayer)
 					{
-						pfLayer->OnResetButtonClicked();
+						pfLayer->OnResetEvent();
 					}
 				});
-			imGuiLayer->OnStepButtonClicked.Bind(
+			imGuiLayer->OnStepEvent.Bind(
 				[this]()
 				{
 					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
 					if (pfLayer)
 					{
-						pfLayer->OnStepButtonClicked();
+						pfLayer->OnStepEvent();
 					}
 				});
+			imGuiLayer->OnRebuildEvent.Bind(
+				[this]()
+				{
+					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
+					if (pfLayer)
+					{
+						pfLayer->OnRebuildEvent();
+					}
+				});
+			pathfindingLayer->OnRebuildEvent();
 		}
 	}
 
