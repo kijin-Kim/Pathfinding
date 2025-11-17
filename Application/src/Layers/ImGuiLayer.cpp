@@ -110,25 +110,26 @@ void ImGuiLayer::RenderDetailPanel()
 	ImGui::BeginDisabled(!bIsRefreshed);
 	ImGui::BeginGroup();
 	ImGui::Columns(2, "Start Position");
-	ImGui::SliderInt("Start Row", &currentMap_->StartRow, 0, currentMap_->Rows - 1);
+	ImGui::SliderInt("Start Row", &currentMap_->StartRow, 0, currentMap_->RowCount - 1);
 	ImGui::NextColumn();
-	ImGui::SliderInt("Start Col", &currentMap_->StartColumn, 0, currentMap_->Columns - 1);
+	ImGui::SliderInt("Start Col", &currentMap_->StartColumn, 0, currentMap_->ColumnCount - 1);
 	ImGui::Columns(1);
 
 	ImGui::Columns(2, "End Position");
-	ImGui::SliderInt("End Row", &currentMap_->EndRow, 0, currentMap_->Rows - 1);
+	ImGui::SliderInt("End Row", &currentMap_->EndRow, 0, currentMap_->RowCount - 1);
 	ImGui::NextColumn();
-	ImGui::SliderInt("End Col", &currentMap_->EndColumn, 0, currentMap_->Columns - 1);
+	ImGui::SliderInt("End Col", &currentMap_->EndColumn, 0, currentMap_->ColumnCount - 1);
 	ImGui::Columns(1);
 
-	const char* heuristicMethodNames[EHeuristicMethod::NUM_TYPES];
-	for (int i = 0; i < EHeuristicMethod::NUM_TYPES; ++i)
+	const char* heuristicMethodNames[static_cast<int>(EHeuristicMethod::NUM_TYPES)];
+	for (int i = 0; i < static_cast<int>(EHeuristicMethod::NUM_TYPES); ++i)
 	{
 		heuristicMethodNames[i] = EHeuristicMethod::to_string(static_cast<EHeuristicMethod::Type>(i));
 	}
 
 	int selectedIndex = currentMap_->HeuristicMethod;
-	if (ImGui::Combo("Heuristic Method", &selectedIndex, heuristicMethodNames, EHeuristicMethod::NUM_TYPES))
+	if (ImGui::Combo("Heuristic Method", &selectedIndex, heuristicMethodNames,
+					 EHeuristicMethod::NUM_TYPES))
 	{
 		currentMap_->HeuristicMethod = static_cast<EHeuristicMethod::Type>(selectedIndex);
 	}

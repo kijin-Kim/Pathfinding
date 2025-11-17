@@ -2,15 +2,14 @@
 
 #include "Layers/LayerCommon.h"
 
-
 struct MapData
 {
 	MapData() = default;
 	explicit MapData(int rows, int columns, int cellSize);
 
 	// Grid dimensions
-	int Rows;
-	int Columns;
+	int RowCount;
+	int ColumnCount;
 	int CellSize;
 
 	// Pathfinding settings

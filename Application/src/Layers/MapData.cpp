@@ -2,8 +2,8 @@
 #include "Layers/LayerCommon.h"
 
 MapData::MapData(int rows, int columns, int cellSize)
-	: Rows(rows)
-	, Columns(columns)
+	: RowCount(rows)
+	, ColumnCount(columns)
 	, CellSize(cellSize)
 	, StartRow(0)
 	, StartColumn(0)

@@ -2,6 +2,7 @@
 
 #include "Core/Application.h"
 #include "GLFW/glfw3.h"
+#include "Pathfinding/PathfindingConfig.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/ResourceManager.h"
 #include "glm/ext/matrix_clip_space.hpp"
@@ -11,57 +12,42 @@
 
 void PathfindingLayer::OnInit()
 {
-
 	const Application::Settings& settings = Application::GetInstance().GetSettings();
-	ResourceManager<Framebuffer>& framebufferManager = ResourceManager<Framebuffer>::GetInstance();
-	std::shared_ptr<Framebuffer> framebuffer
-		= framebufferManager.GetOrCreate("Viewport", settings.Width, settings.Height);
+	auto& framebufferManager = ResourceManager<Framebuffer>::GetInstance();
+	framebufferManager.GetOrCreate("Viewport", settings.Width, settings.Height);
 }
-void PathfindingLayer::RebuildGridAndOpenSet()
+void PathfindingLayer::GenerateRandomWalls(int rowCount, int columnCount)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
+	for (int i = 0; i < rowCount * columnCount * 0.3f; ++i)
 	{
-		return;
+		const int randRow = rand() % rowCount;
+		const int randCol = rand() % columnCount;
+		grid_[randRow][randCol].Type = ETileType::Wall;
 	}
+}
+void PathfindingLayer::RebuildGrid(int rowCount, int columnCount, int startRow, int startColumn, int endRow,
+								   int endColumn, EHeuristicMethod::Type method)
+{
 
 	grid_.clear();
-	grid_.resize(mapData->Rows, std::vector<Node>(mapData->Columns));
-	for (int row = 0; row < mapData->Rows; ++row)
+	grid_.resize(rowCount, std::vector<Node>(columnCount));
+	for (int row = 0; row < rowCount; ++row)
 	{
-		for (int col = 0; col < mapData->Columns; ++col)
+		for (int column = 0; column < columnCount; ++column)
 		{
-			Node& node = grid_[row][col];
-			node.Row = row;
-			node.Column = col;
+			grid_[row][column].Row = row;
+			grid_[row][column].Column = column;
 		}
 	}
 
-	for (int i = 0; i < mapData->Rows * mapData->Columns * 0.3f; ++i)
-	{
-		int randRow = rand() % mapData->Rows;
-		int randCol = rand() % mapData->Columns;
-		grid_[randRow][randCol].Type = ETileType::Wall;
-	}
+	GenerateRandomWalls(rowCount, columnCount);
 
-	grid_[mapData->StartRow][mapData->StartColumn].Type = ETileType::Path;
-	grid_[mapData->EndRow][mapData->EndColumn].Type = ETileType::Path;
-
-	Node& start = grid_[mapData->StartRow][mapData->StartColumn];
-	start.GCost = 0;
-	start.HCost = HeuristicCost(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
-								mapData->HeuristicMethod);
-	openSet_ = std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)>(comp_);
-	openSet_.push(&start);
+	grid_[startRow][startColumn].Type = ETileType::Path;
+	grid_[endRow][endColumn].Type = ETileType::Path;
 }
-void PathfindingLayer::StepPathfinding()
+void PathfindingLayer::StepPathfinding(int rowCount, int columnCount, int endRow, int endColumn,
+									   EHeuristicMethod::Type method)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return;
-	}
-
 	if (!openSet_.empty() && !bPathFound_)
 	{
 		Node* current = openSet_.top();
@@ -71,27 +57,27 @@ void PathfindingLayer::StepPathfinding()
 			return;
 		}
 		current->bClosed = true;
-		if (current->Row == mapData->EndRow && current->Column == mapData->EndColumn)
+		if (current->Row == endRow && current->Column == endColumn)
 		{
 			bPathFound_ = true;
 			return;
 		}
 
-		const bool bAllowDiagonals = mapData->HeuristicMethod != EHeuristicMethod::Manhattan;
-		std::vector<Node*> neighbors = GetNeighbors(current->Row, current->Column, bAllowDiagonals);
+		const bool bAllowDiagonals = method != EHeuristicMethod::Manhattan;
+		const std::vector<Node*> neighbors
+			= GetNeighbors(current->Row, current->Column, rowCount, columnCount, bAllowDiagonals);
 		for (Node* neighbor : neighbors)
 		{
 			if (!neighbor->IsWalkable() || neighbor->bClosed)
 			{
 				continue;
 			}
-			int walkCost = GetTileCost(neighbor->Type);
+			int walkCost = GetWalkCost(neighbor->Type);
 			float newCost = current->GCost + walkCost;
 			if (newCost < neighbor->GCost)
 			{
 				neighbor->GCost = newCost;
-				neighbor->HCost = HeuristicCost(neighbor->Row, neighbor->Column, mapData->EndRow, mapData->EndColumn,
-												mapData->HeuristicMethod);
+				neighbor->HCost = CalculateHeuristicCost(neighbor->Row, neighbor->Column, endRow, endColumn, method);
 				neighbor->Parent = current;
 				openSet_.push(neighbor);
 			}
@@ -99,58 +85,48 @@ void PathfindingLayer::StepPathfinding()
 	}
 }
 
-void PathfindingLayer::DrawGrid(Renderer& renderer)
+void PathfindingLayer::DrawGridLines(Renderer& renderer, int rowCount, int columnCount, int cellSize)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
+	const float gridHalfWidth = columnCount * cellSize / 2.0f;
+	const float gridHalfHeight = (rowCount * cellSize) / 2.0f;
+
+	for (int column = 0; column <= columnCount; ++column)
 	{
-		return;
+		const glm::vec2 start = glm::vec2(-gridHalfWidth, -gridHalfHeight + column * cellSize);
+		const glm::vec2 end = glm::vec2(gridHalfWidth, -gridHalfHeight + column * cellSize);
+		renderer.DrawLine(start, end, PathfindingConfig::Colors::GRID_LINE, PathfindingConfig::GRID_LINE_WIDTH);
+	}
+	for (int row = 0; row <= rowCount; ++row)
+	{
+		const glm::vec2 start = glm::vec2(-gridHalfWidth + row * cellSize, -gridHalfHeight);
+		const glm::vec2 end = glm::vec2(-gridHalfWidth + row * cellSize, gridHalfHeight);
+		renderer.DrawLine(start, end, PathfindingConfig::Colors::GRID_LINE, PathfindingConfig::GRID_LINE_WIDTH);
 	}
 
-	const float gridHalfWidth = (mapData->Columns * mapData->CellSize) / 2.0f;
-	const float gridHalfHeight = (mapData->Rows * mapData->CellSize) / 2.0f;
-
-	constexpr glm::vec4 GRID_COLOR = glm::vec4(0.5f, 0.5f, 0.5f, 0.3f);
-	for (int col = 0; col <= mapData->Columns; ++col)
+	for (int row = 0; row < rowCount; ++row)
 	{
-		const glm::vec2 start = glm::vec2(-gridHalfWidth, -gridHalfHeight + col * mapData->CellSize);
-		const glm::vec2 end = glm::vec2(gridHalfWidth, -gridHalfHeight + col * mapData->CellSize);
-		renderer.DrawLine(start, end, GRID_COLOR, 1.0f);
-	}
-	for (int row = 0; row <= mapData->Rows; ++row)
-	{
-		const glm::vec2 start = glm::vec2(-gridHalfWidth + row * mapData->CellSize, -gridHalfHeight);
-		const glm::vec2 end = glm::vec2(-gridHalfWidth + row * mapData->CellSize, gridHalfHeight);
-		renderer.DrawLine(start, end, GRID_COLOR, 1.0f);
-	}
-
-	for (int row = 0; row < mapData->Rows; ++row)
-	{
-		for (int col = 0; col < mapData->Columns; ++col)
+		for (int column = 0; column < columnCount; ++column)
 		{
-			glm::vec2 center = IndexToCenterPosition(row, col);
-			glm::vec2 leftTop = glm::vec2(center.x - mapData->CellSize * 0.5f, center.y + mapData->CellSize * 0.5f);
-			glm::vec2 rightBottom = leftTop + glm::vec2(mapData->CellSize, -mapData->CellSize);
-			renderer.DrawLine(leftTop, rightBottom, GRID_COLOR, 1.0f);
-			glm::vec2 rightTop = glm::vec2(center.x + mapData->CellSize * 0.5f, center.y + mapData->CellSize * 0.5f);
-			glm::vec2 leftBottom = rightTop + glm::vec2(-mapData->CellSize, -mapData->CellSize);
-			renderer.DrawLine(rightTop, leftBottom, GRID_COLOR, 1.0f);
+			glm::vec2 center = GridToWorldPosition(row, column, rowCount, columnCount, cellSize);
+			glm::vec2 leftTop = glm::vec2(center.x - cellSize * 0.5f, center.y + cellSize * 0.5f);
+			glm::vec2 rightBottom = leftTop + glm::vec2(cellSize, -cellSize);
+			glm::vec2 rightTop = glm::vec2(center.x + cellSize * 0.5f, center.y + cellSize * 0.5f);
+			glm::vec2 leftBottom = rightTop + glm::vec2(-cellSize, -cellSize);
+
+			renderer.DrawLine(leftTop, rightBottom, PathfindingConfig::Colors::GRID_LINE,
+							  PathfindingConfig::GRID_LINE_WIDTH);
+			renderer.DrawLine(rightTop, leftBottom, PathfindingConfig::Colors::GRID_LINE,
+							  PathfindingConfig::GRID_LINE_WIDTH);
 		}
 	}
 }
-void PathfindingLayer::DrawPath(Renderer& renderer)
+void PathfindingLayer::DrawCurrentPath(Renderer& renderer, int rowCount, int columnCount, int cellSize, int endRow,
+									   int endColumn)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return;
-	}
-
-	static constexpr glm::vec4 PATH_COLOR = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 	Node* current = nullptr;
 	if (bPathFound_)
 	{
-		current = &grid_[mapData->EndRow][mapData->EndColumn];
+		current = &grid_[endRow][endColumn];
 	}
 	else
 	{
@@ -165,80 +141,100 @@ void PathfindingLayer::DrawPath(Renderer& renderer)
 	int currentCol = current->Column;
 	while (Node* parent = grid_[currentRow][currentCol].Parent)
 	{
-		renderer.DrawLine(IndexToCenterPosition(currentRow, currentCol),
-						  IndexToCenterPosition(parent->Row, parent->Column), PATH_COLOR, 3.0f);
+
+		renderer.DrawLine(GridToWorldPosition(currentRow, currentCol, rowCount, columnCount, cellSize),
+						  GridToWorldPosition(parent->Row, parent->Column, rowCount, columnCount, cellSize),
+						  PathfindingConfig::Colors::PATH_LINE, PathfindingConfig::PATH_LINE_WIDTH);
 		currentRow = parent->Row;
 		currentCol = parent->Column;
 	}
 }
-void PathfindingLayer::DrawClosed(Renderer& renderer)
+void PathfindingLayer::DrawClosedNodes(Renderer& renderer, int rowCount, int columnCount, int cellSize)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
+	for (int row = 0; row < rowCount; ++row)
 	{
-		return;
-	}
-
-	constexpr glm::vec4 CLOSED_COLOR = glm::vec4(0.27f, 0.68f, 0.73f, 0.3f);
-	for (int row = 0; row < mapData->Rows; ++row)
-	{
-		for (int col = 0; col < mapData->Columns; ++col)
+		for (int column = 0; column < columnCount; ++column)
 		{
-			if (!grid_[row][col].bClosed)
+			if (!grid_[row][column].bClosed)
 			{
 				continue;
 			}
 
-			glm::ivec2 position = IndexToCenterPosition(row, col);
-			renderer.DrawRectangle(position, 0.0f, glm::vec2(mapData->CellSize, mapData->CellSize), CLOSED_COLOR,
-								   false);
+			glm::ivec2 position = GridToWorldPosition(row, column, rowCount, columnCount, cellSize);
+			renderer.DrawRectangle(position, 0.0f, glm::vec2(cellSize, cellSize),
+								   PathfindingConfig::Colors::CLOSED_NODE, false);
 		}
 	}
 }
 
-void PathfindingLayer::DrawOpen(Renderer& renderer)
+void PathfindingLayer::DrawOpenNodes(Renderer& renderer, int rowCount, int columnCount, int cellSize)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return;
-	}
-
-	constexpr glm::vec4 OPEN_COLOR = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
-	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> tempOpenSet = openSet_;
+	std::priority_queue<Node*, std::vector<Node*>, NodeComparator> tempOpenSet = openSet_;
 	while (!tempOpenSet.empty())
 	{
 		Node* node = tempOpenSet.top();
 		tempOpenSet.pop();
 
-		glm::ivec2 position = IndexToCenterPosition(node->Row, node->Column);
-		renderer.DrawRectangle(position, 0.0f, glm::vec2(mapData->CellSize, mapData->CellSize), OPEN_COLOR, false);
+		glm::ivec2 position = GridToWorldPosition(node->Row, node->Column, rowCount, columnCount, cellSize);
+		renderer.DrawRectangle(position, 0.0f, glm::vec2(cellSize, cellSize), PathfindingConfig::Colors::OPEN_NODE,
+							   false);
 	}
 }
 
 void PathfindingLayer::OnUpdate(float deltaTime)
 {
-	constexpr float baseInterval = 0.01f;
-	float interval = baseInterval;
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (mapData)
+	if (bIsPaused_)
 	{
-		interval = baseInterval / mapData->SimulationSpeed;
+		return;
 	}
-	accumulatedTime_ += deltaTime;
-	if (accumulatedTime_ >= interval && !bIsPaused_)
+
+	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
+	if (!mapData)
 	{
-		StepPathfinding();
+		return;
+	}
+
+	float interval = PathfindingConfig::BASE_STEP_INTERVAL / mapData->SimulationSpeed;
+
+	accumulatedTime_ += deltaTime;
+	if (accumulatedTime_ >= interval)
+	{
+		StepPathfinding(mapData->RowCount, mapData->ColumnCount, mapData->EndRow, mapData->EndColumn,
+						mapData->HeuristicMethod);
 		accumulatedTime_ = 0.0f;
 	}
 }
+void PathfindingLayer::DrawTiles(Renderer& renderer, int rowCount, int columnCount, int cellSize)
+{
+
+	for (int row = 0; row < rowCount; ++row)
+	{
+
+		for (int column = 0; column < columnCount; ++column)
+		{
+			const Node& node = grid_[row][column];
+			const glm::ivec2 position = GridToWorldPosition(row, column, rowCount, columnCount, cellSize);
+			renderer.DrawRectangle(position, 0.0f, glm::vec2(cellSize, cellSize), GetTileColor(node.Type), false);
+		}
+	}
+}
+void PathfindingLayer::DrawStartAndEnd(Renderer& renderer, int startRow, int startColumn, int endRow, int endColumn,
+									   int rowCount, int columnCount, int cellSize)
+{
+	renderer.DrawRectangle(GridToWorldPosition(startRow, startColumn, rowCount, columnCount, cellSize), 0.0f,
+						   glm::vec2(cellSize, cellSize), PathfindingConfig::Colors::START_NODE, true);
+	renderer.DrawRectangle(GridToWorldPosition(endRow, endColumn, rowCount, columnCount, cellSize), 0.0f,
+						   glm::vec2(cellSize, cellSize), PathfindingConfig::Colors::END_NODE, true);
+}
 void PathfindingLayer::OnRender(Renderer& renderer)
 {
-	ResourceManager<Framebuffer>& framebufferManager = ResourceManager<Framebuffer>::GetInstance();
-	std::shared_ptr<Framebuffer> framebuffer = framebufferManager.Get("Viewport");
+	auto& framebufferManager = ResourceManager<Framebuffer>::GetInstance();
+	auto framebuffer = framebufferManager.Get("Viewport");
+
 	renderer.BeginScene(framebuffer);
 	glViewport(0, 0, framebuffer->GetWidth(), framebuffer->GetHeight());
-	renderer.Clear(glm::vec4(1.0f, 0.0f, 1.0f, 1.0f));
+	renderer.Clear(PathfindingConfig::Colors::CLEAR_COLOR);
+
 	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
 	if (!mapData)
 	{
@@ -246,133 +242,121 @@ void PathfindingLayer::OnRender(Renderer& renderer)
 		return;
 	}
 
-	DrawGrid(renderer);
-	for (int row = 0; row < mapData->Rows; ++row)
-	{
-		for (int col = 0; col < mapData->Columns; ++col)
-		{
-			const Node& node = grid_[row][col];
-			glm::ivec2 position = IndexToCenterPosition(row, col);
-			renderer.DrawRectangle(position, 0.0f, glm::vec2(mapData->CellSize, mapData->CellSize),
-								   GetTileColor(node.Type), false);
-		}
-	}
+	const int rowCount = mapData->RowCount;
+	const int columnCount = mapData->ColumnCount;
+	const int cellSize = mapData->CellSize;
 
-	renderer.DrawRectangle(IndexToCenterPosition(mapData->StartRow, mapData->StartColumn), 0.0f,
-						   glm::vec2(mapData->CellSize, mapData->CellSize), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), true);
-	renderer.DrawRectangle(IndexToCenterPosition(mapData->EndRow, mapData->EndColumn), 0.0f,
-						   glm::vec2(mapData->CellSize, mapData->CellSize), glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), true);
+	const int startRow = mapData->StartRow;
+	const int startColumn = mapData->StartColumn;
+	const int endRow = mapData->EndRow;
+	const int endColumn = mapData->EndColumn;
 
-	DrawClosed(renderer);
-	DrawPath(renderer);
-	DrawOpen(renderer);
+	DrawGridLines(renderer, rowCount, columnCount, cellSize);
+	DrawTiles(renderer, rowCount, columnCount, cellSize);
+	DrawStartAndEnd(renderer, startRow, startColumn, endRow, endColumn, rowCount, columnCount, cellSize);
+	DrawClosedNodes(renderer, rowCount, columnCount, cellSize);
+	DrawCurrentPath(renderer, rowCount, columnCount, cellSize, endRow, endColumn);
+	DrawOpenNodes(renderer, rowCount, columnCount, cellSize);
 
 	renderer.EndScene();
 }
 
-std::vector<Node*> PathfindingLayer::GetNeighbors(int row, int col, bool allowDiagonals)
+std::vector<Node*> PathfindingLayer::GetNeighbors(int row, int column, int rowCount, int columnCount,
+												  bool bAllowDiagonals)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return {};
-	}
-
 	std::vector<Node*> neighbors;
+	neighbors.reserve(bAllowDiagonals ? 8 : 4);
 
 	// 직교 방향 먼저 확인
-	bool canUp = (row - 1 >= 0) && grid_[row - 1][col].IsWalkable();
-	bool canDown = (row + 1 < mapData->Rows) && grid_[row + 1][col].IsWalkable();
-	bool canLeft = (col - 1 >= 0) && grid_[row][col - 1].IsWalkable();
-	bool canRight = (col + 1 < mapData->Columns) && grid_[row][col + 1].IsWalkable();
+	const bool bCanUp = row - 1 >= 0 && grid_[row - 1][column].IsWalkable();
+	const bool bCanDown = row + 1 < rowCount && grid_[row + 1][column].IsWalkable();
+	const bool bCanLeft = column - 1 >= 0 && grid_[row][column - 1].IsWalkable();
+	const bool bCanRight = column + 1 < columnCount && grid_[row][column + 1].IsWalkable();
 
 	// 직교 이웃 추가
 	if (row - 1 >= 0)
 	{
-		neighbors.push_back(&grid_[row - 1][col]);
+		neighbors.push_back(&grid_[row - 1][column]);
 	}
-	if (row + 1 < mapData->Rows)
+	if (row + 1 < rowCount)
 	{
-		neighbors.push_back(&grid_[row + 1][col]);
+		neighbors.push_back(&grid_[row + 1][column]);
 	}
-	if (col - 1 >= 0)
+	if (column - 1 >= 0)
 	{
-		neighbors.push_back(&grid_[row][col - 1]);
+		neighbors.push_back(&grid_[row][column - 1]);
 	}
-	if (col + 1 < mapData->Columns)
+	if (column + 1 < columnCount)
 	{
-		neighbors.push_back(&grid_[row][col + 1]);
+		neighbors.push_back(&grid_[row][column + 1]);
 	}
 
-	if (allowDiagonals)
+	if (bAllowDiagonals)
 	{
 		// 대각선은 인접한 두 직교 방향이 모두 통과 가능할 때만
-		if (canUp && canLeft && row - 1 >= 0 && col - 1 >= 0)
+		if (bCanUp && bCanLeft && row - 1 >= 0 && column - 1 >= 0)
 		{
-			neighbors.push_back(&grid_[row - 1][col - 1]);
+			neighbors.push_back(&grid_[row - 1][column - 1]);
 		}
 
-		if (canUp && canRight && row - 1 >= 0 && col + 1 < mapData->Columns)
+		if (bCanUp && bCanRight && row - 1 >= 0 && column + 1 < columnCount)
 		{
-			neighbors.push_back(&grid_[row - 1][col + 1]);
+			neighbors.push_back(&grid_[row - 1][column + 1]);
 		}
 
-		if (canDown && canLeft && row + 1 < mapData->Rows && col - 1 >= 0)
+		if (bCanDown && bCanLeft && row + 1 < rowCount && column - 1 >= 0)
 		{
-			neighbors.push_back(&grid_[row + 1][col - 1]);
+			neighbors.push_back(&grid_[row + 1][column - 1]);
 		}
 
-		if (canDown && canRight && row + 1 < mapData->Rows && col + 1 < mapData->Columns)
+		if (bCanDown && bCanRight && row + 1 < rowCount && column + 1 < columnCount)
 		{
-			neighbors.push_back(&grid_[row + 1][col + 1]);
+			neighbors.push_back(&grid_[row + 1][column + 1]);
 		}
 	}
 
 	return neighbors;
 }
 
-glm::vec2 PathfindingLayer::IndexToCenterPosition(int row, int col)
+glm::vec2 PathfindingLayer::GridToWorldPosition(int row, int column, int rowCount, int columnCount, int cellSize)
 {
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
-	{
-		return glm::vec2(0.0f, 0.0f);
-	}
-	const float gridHalfWidth = (mapData->Columns * mapData->CellSize) / 2.0f;
-	const float gridHalfHeight = (mapData->Rows * mapData->CellSize) / 2.0f;
+	const float gridHalfWidth = columnCount * cellSize / 2.0f;
+	const float gridHalfHeight = rowCount * cellSize / 2.0f;
 
-	return glm::vec2(-gridHalfWidth + col * mapData->CellSize + mapData->CellSize * 0.5f,
-					 gridHalfHeight - row * mapData->CellSize - mapData->CellSize * 0.5f);
+	return glm::vec2(-gridHalfWidth + column * cellSize + cellSize * 0.5f,
+					 gridHalfHeight - row * cellSize - cellSize * 0.5f);
 }
 
-glm::vec4 PathfindingLayer::GetTileColor(ETileType type)
+glm::vec4 PathfindingLayer::GetTileColor(ETileType type) const
 {
 	switch (type)
 	{
 	case ETileType::Path:
-		return glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+		return PathfindingConfig::Colors::PATH_TILE;
 	case ETileType::Wall:
-		return glm::vec4(1.0f, 0.0f, 0.0f, 0.3f);
+		return PathfindingConfig::Colors::WALL_TILE;
 	default:
-		return glm::vec4(1.0f, 1.0f, 1.0f, 0.3f);
+		return PathfindingConfig::Colors::PATH_TILE;
 	}
 }
-float PathfindingLayer::GetTileCost(ETileType type)
+float PathfindingLayer::GetWalkCost(ETileType type) const
 {
 	switch (type)
 	{
 	case ETileType::Path:
-		return 1.0f;
+		return PathfindingConfig::ORTHOGONAL_COST;
 	case ETileType::Wall:
-		return std::numeric_limits<float>::max();
+		return PathfindingConfig::IMPASSABLE_COST;
 	default:
-		return 1.0f;
+		return PathfindingConfig::ORTHOGONAL_COST;
 	}
 }
-float PathfindingLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod::Type method)
+
+float PathfindingLayer::CalculateHeuristicCost(int rowStart, int columnStart, int rowEnd, int columnEnd,
+											   EHeuristicMethod::Type method) const
 {
-	const int deltaRow = abs(rowA - rowB);
-	const int deltaCol = abs(colA - colB);
+	const int deltaRow = abs(rowStart - rowEnd);
+	const int deltaCol = abs(columnStart - columnEnd);
 	switch (method)
 	{
 	case EHeuristicMethod::None:
@@ -382,7 +366,7 @@ float PathfindingLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EH
 	case EHeuristicMethod::Euclidean:
 		return sqrtf(static_cast<float>(deltaRow * deltaRow + deltaCol * deltaCol));
 	case EHeuristicMethod::Octile:
-		return static_cast<float>(std::min(deltaRow, deltaCol)) * 1.4142f
+		return static_cast<float>(std::min(deltaRow, deltaCol)) * PathfindingConfig::DIAGONAL_COST
 			   + std::abs(static_cast<float>(deltaRow - deltaCol));
 	default:
 		return 0.0f;
@@ -391,7 +375,13 @@ float PathfindingLayer::HeuristicCost(int rowA, int colA, int rowB, int colB, EH
 void PathfindingLayer::OnMapRefChanged(const std::weak_ptr<MapData>& weak)
 {
 	mapDataWeak_ = weak;
-	RebuildGridAndOpenSet();
+	if (std::shared_ptr<MapData> mapData = mapDataWeak_.lock())
+	{
+		RebuildGrid(mapData->RowCount, mapData->ColumnCount, mapData->StartRow, mapData->StartColumn, mapData->EndRow,
+					mapData->EndColumn, mapData->HeuristicMethod);
+		ResetPathfinding(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
+						 mapData->HeuristicMethod);
+	}
 }
 
 void PathfindingLayer::OnStartEvent()
@@ -402,40 +392,48 @@ void PathfindingLayer::OnPauseEvent()
 {
 	bIsPaused_ = true;
 }
-void PathfindingLayer::OnResetEvent()
+void PathfindingLayer::ResetPathfinding(int startRow, int startColumn, int endRow, int endColumn,
+										EHeuristicMethod::Type method)
 {
 	bPathFound_ = false;
 
-	std::shared_ptr<MapData> mapData = mapDataWeak_.lock();
-	if (!mapData)
+	for (std::vector<Node>& row : grid_)
 	{
-		return;
-	}
-
-	for (int row = 0; row < mapData->Rows; ++row)
-	{
-		for (int col = 0; col < mapData->Columns; ++col)
+		for (Node& node : row)
 		{
-			Node& node = grid_[row][col];
-			node.GCost = std::numeric_limits<float>::max();
-			node.HCost = 0.0f;
-			node.Parent = nullptr;
-			node.bClosed = false;
+			node.Reset();
 		}
 	}
 
-	Node& start = grid_[mapData->StartRow][mapData->StartColumn];
+	Node& start = grid_[startRow][startColumn];
 	start.GCost = 0;
-	start.HCost = HeuristicCost(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
-								mapData->HeuristicMethod);
+	start.HCost = CalculateHeuristicCost(startRow, startColumn, endRow, endColumn, method);
 	openSet_ = std::priority_queue<Node*, std::vector<Node*>, NodeComparator>();
 	openSet_.push(&start);
 }
+void PathfindingLayer::OnResetEvent()
+{
+	if (std::shared_ptr<MapData> mapData = mapDataWeak_.lock())
+	{
+		ResetPathfinding(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
+						 mapData->HeuristicMethod);
+	}
+}
 void PathfindingLayer::OnStepEvent()
 {
-	StepPathfinding();
+	if (std::shared_ptr<MapData> mapData = mapDataWeak_.lock())
+	{
+		StepPathfinding(mapData->RowCount, mapData->ColumnCount, mapData->EndRow, mapData->EndColumn,
+						mapData->HeuristicMethod);
+	}
 }
 void PathfindingLayer::OnRebuildEvent()
 {
-	RebuildGridAndOpenSet();
+	if (std::shared_ptr<MapData> mapData = mapDataWeak_.lock())
+	{
+		RebuildGrid(mapData->RowCount, mapData->ColumnCount, mapData->StartRow, mapData->StartColumn, mapData->EndRow,
+					mapData->EndColumn, mapData->HeuristicMethod);
+		ResetPathfinding(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
+						 mapData->HeuristicMethod);
+	}
 }

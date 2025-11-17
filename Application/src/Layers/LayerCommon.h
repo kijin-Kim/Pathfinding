@@ -18,29 +18,29 @@ namespace EHeuristicMethod
 	{
 		switch (e)
 		{
-		case EHeuristicMethod::Type::None:
+		case EHeuristicMethod::None:
 			return "None";
-		case EHeuristicMethod::Type::Manhattan:
+		case EHeuristicMethod::Manhattan:
 			return "Manhattan";
-		case EHeuristicMethod::Type::Euclidean:
+		case EHeuristicMethod::Euclidean:
 			return "Euclidean";
-		case EHeuristicMethod::Type::Octile:
+		case EHeuristicMethod::Octile:
 			return "Octile";
 		default:
 			return "Unknown";
 		}
 	}
-	inline Type from_string(const std::string& str)
+	inline EHeuristicMethod::Type from_string(const std::string& str)
 	{
 		if (str == "None")
-			return EHeuristicMethod::Type::None;
+			return EHeuristicMethod::None;
 		else if (str == "Manhattan")
-			return EHeuristicMethod::Type::Manhattan;
+			return EHeuristicMethod::Manhattan;
 		else if (str == "Euclidean")
-			return EHeuristicMethod::Type::Euclidean;
+			return EHeuristicMethod::Euclidean;
 		else if (str == "Octile")
-			return EHeuristicMethod::Type::Octile;
-		return EHeuristicMethod::Type::None;
+			return EHeuristicMethod::Octile;
+		return EHeuristicMethod::None;
 	}
 
 } // namespace EHeuristicMethod

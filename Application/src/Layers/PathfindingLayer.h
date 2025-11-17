@@ -13,32 +13,39 @@ class PathfindingLayer : public ILayer
 {
 public:
 	virtual void OnInit() override;
-	void RebuildGridAndOpenSet();
-	void StepPathfinding();
-	void DrawGrid(Renderer& renderer);
-	void DrawPath(Renderer& renderer);
-	void DrawClosed(Renderer& renderer);
-	void DrawOpen(Renderer& renderer);
+	void GenerateRandomWalls(int rowCount, int columnCount);
+	void RebuildGrid(int rowCount, int columnCount, int startRow, int startColumn, int endRow, int endColumn,
+					 EHeuristicMethod::Type method);
+	void StepPathfinding(int rowCount, int columnCount, int endRow, int endColumn, EHeuristicMethod::Type method);
+	void DrawGridLines(Renderer& renderer, int rowCount, int columnCount, int cellSize);
+	void DrawCurrentPath(Renderer& renderer, int rowCount, int columnCount, int cellSize, int endRow, int endColumn);
+	void DrawClosedNodes(Renderer& renderer, int rowCount, int columnCount, int cellSize);
+	void DrawOpenNodes(Renderer& renderer, int rowCount, int columnCount, int cellSize);
 	virtual void OnUpdate(float deltaTime) override;
+	void DrawTiles(Renderer& renderer, int rowCount, int columnCount, int cellSize);
+	void DrawStartAndEnd(Renderer& renderer, int startRow, int startColumn, int endRow, int endColumn, int rowCount,
+						 int columnCount, int cellSize);
 	virtual void OnRender(Renderer& renderer) override;
 
-	std::vector<Node*> GetNeighbors(int row, int col, bool allowDiagonals);
+	std::vector<Node*> GetNeighbors(int row, int column, int rowCount, int columnCount, bool bAllowDiagonals);
 
-	glm::vec2 IndexToCenterPosition(int row, int col);
-	glm::vec4 GetTileColor(ETileType type);
-	float GetTileCost(ETileType type);
-	float HeuristicCost(int rowA, int colA, int rowB, int colB, EHeuristicMethod::Type method);
+	glm::vec2 GridToWorldPosition(int row, int column, int rowCount, int columnCount, int cellSize);
+	glm::vec4 GetTileColor(ETileType type) const;
+	float GetWalkCost(ETileType type) const;
+	float CalculateHeuristicCost(int rowStart, int columnStart, int rowEnd, int columnEnd,
+								 EHeuristicMethod::Type method) const;
 
 	void OnMapRefChanged(const std::weak_ptr<MapData>& weak);
 	void OnStartEvent();
 	void OnPauseEvent();
+	void ResetPathfinding(int startRow, int startColumn, int endRow, int endColumn, EHeuristicMethod::Type method);
 	void OnResetEvent();
 	void OnStepEvent();
 	void OnRebuildEvent();
 
 private:
 	std::vector<std::vector<Node>> grid_;
-	
+
 	struct NodeComparator
 	{
 		bool operator()(const Node* a, const Node* b) const

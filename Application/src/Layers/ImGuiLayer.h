@@ -22,7 +22,6 @@ public:
 	Delegate<> OnRebuildEvent;
 
 private:
-	// Rendering methods
 	void RenderViewport();
 	void RenderDetailPanel();
 

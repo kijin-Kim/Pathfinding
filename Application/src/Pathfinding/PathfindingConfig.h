@@ -8,7 +8,7 @@ namespace PathfindingConfig
 
 	constexpr float BASE_STEP_INTERVAL = 0.01f;
 
-	constexpr float DIAGONAL_COST = 1.4142135f; // sqrt(2)
+	constexpr float DIAGONAL_COST = 1.4142135f;
 	constexpr float ORTHOGONAL_COST = 1.0f;
 	constexpr float IMPASSABLE_COST = std::numeric_limits<float>::max();
 

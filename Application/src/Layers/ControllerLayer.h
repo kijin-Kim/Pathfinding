@@ -28,8 +28,7 @@ public:
 			imGuiLayer->OnStartEvent.Bind(
 				[this]()
 				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
+					if (std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock())
 					{
 						pfLayer->OnStartEvent();
 					}
@@ -37,8 +36,7 @@ public:
 			imGuiLayer->OnPauseEvent.Bind(
 				[this]()
 				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
+					if (std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock())
 					{
 						pfLayer->OnPauseEvent();
 					}
@@ -46,8 +44,7 @@ public:
 			imGuiLayer->OnResetEvent.Bind(
 				[this]()
 				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
+					if (std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock())
 					{
 						pfLayer->OnResetEvent();
 					}
@@ -55,8 +52,7 @@ public:
 			imGuiLayer->OnStepEvent.Bind(
 				[this]()
 				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
+					if (std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock())
 					{
 						pfLayer->OnStepEvent();
 					}
@@ -64,8 +60,7 @@ public:
 			imGuiLayer->OnRebuildEvent.Bind(
 				[this]()
 				{
-					std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock();
-					if (pfLayer)
+					if (std::shared_ptr<PathfindingLayer> pfLayer = pathfindingLayer_.lock())
 					{
 						pfLayer->OnRebuildEvent();
 					}
