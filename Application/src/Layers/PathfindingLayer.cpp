@@ -428,7 +428,7 @@ void PathfindingLayer::OnResetEvent()
 	start.GCost = 0;
 	start.HCost = HeuristicCost(mapData->StartRow, mapData->StartColumn, mapData->EndRow, mapData->EndColumn,
 								mapData->HeuristicMethod);
-	openSet_ = std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)>(comp_);
+	openSet_ = std::priority_queue<Node*, std::vector<Node*>, NodeComparator>();
 	openSet_.push(&start);
 }
 void PathfindingLayer::OnStepEvent()

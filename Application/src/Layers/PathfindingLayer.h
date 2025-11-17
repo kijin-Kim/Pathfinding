@@ -38,16 +38,20 @@ public:
 
 private:
 	std::vector<std::vector<Node>> grid_;
-
-	decltype([](const Node* a, const Node* b)
+	
+	struct NodeComparator
 	{
-		if (a->FCost() == b->FCost())
+		bool operator()(const Node* a, const Node* b) const
 		{
-			return a->HCost > b->HCost;
+			if (a->FCost() == b->FCost())
+			{
+				return a->HCost > b->HCost;
+			}
+			return a->FCost() > b->FCost();
 		}
-		return a->FCost() > b->FCost();
-	}) comp_;
-	std::priority_queue<Node*, std::vector<Node*>, decltype(comp_)> openSet_;
+	};
+	std::priority_queue<Node*, std::vector<Node*>, NodeComparator> openSet_;
+
 	bool bPathFound_ = false;
 	float accumulatedTime_ = 0.0f;
 
